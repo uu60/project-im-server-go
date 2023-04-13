@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ type Server struct {
 	Port int
 	// 在线用户的列表
 	OnlineMap map[string]*User
-	mapLock   sync.RWMutex
+	MapLock   sync.RWMutex
 
 	// 消息广播的channel
 	BroadcastChan chan string
@@ -31,7 +31,7 @@ func NewServer(ip string, port int) *Server {
 	return &server
 }
 
-// 启动服务器的接口
+// Start 启动服务器的接口
 func (s *Server) Start() {
 	// socket listen
 	listen, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.Ip, s.Port))
@@ -115,7 +115,7 @@ func (s *Server) loopWaitForMessage(conn net.Conn, user *User, aliveChan chan bo
 }
 
 func (s *Server) BroadCast(sender *User, msg string) {
-	sendMsg := getPrefixedMessage(sender, msg, false)
+	sendMsg := GetPrefixedMessage(sender, msg, false)
 	s.BroadcastChan <- sendMsg
 }
 
@@ -124,10 +124,10 @@ func (s *Server) ListenBroadcastMessage() {
 		msg := <-s.BroadcastChan
 
 		// 将msg发送给全部在线的user
-		s.mapLock.RLock()
+		s.MapLock.RLock()
 		for _, cli := range s.OnlineMap {
 			cli.C <- msg
 		}
-		s.mapLock.RUnlock()
+		s.MapLock.RUnlock()
 	}
 }

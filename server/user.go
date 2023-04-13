@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"net"
@@ -42,9 +42,9 @@ func (u *User) ListenMessage() {
 func (u *User) Online() {
 	s := u.server
 	// 用户上线，将用户加入到onlineMap中
-	s.mapLock.Lock()
+	s.MapLock.Lock()
 	s.OnlineMap[u.Name] = u
-	s.mapLock.Unlock()
+	s.MapLock.Unlock()
 
 	// 广播当前用户上线信息
 	s.BroadCast(u, "已上线")
@@ -54,9 +54,9 @@ func (u *User) Online() {
 func (u *User) Offline() {
 	s := u.server
 	// 用户上线，将用户加入到onlineMap中
-	s.mapLock.Lock()
+	s.MapLock.Lock()
 	delete(s.OnlineMap, u.Name)
-	s.mapLock.Unlock()
+	s.MapLock.Unlock()
 
 	// 广播当前用户上线信息
 	s.BroadCast(u, "已下线")
@@ -67,11 +67,11 @@ func (u *User) SendMessage(msg string) {
 	server := u.server
 	if msg == "who" {
 		// 查询当前在线用户
-		server.mapLock.RLock()
+		server.MapLock.RLock()
 		for _, user := range server.OnlineMap {
 			u.GetMessage("在线: [" + user.Addr + "]" + user.Name)
 		}
-		server.mapLock.RUnlock()
+		server.MapLock.RUnlock()
 	} else if strings.HasPrefix(msg, "rename ") {
 		if !u.rename(msg, server) {
 			return
@@ -100,7 +100,7 @@ func (u *User) sendPrivateMessage(msg string) bool {
 		user, ok := u.server.OnlineMap[receiverName]
 		if ok {
 			msg, _ := strings.CutPrefix(after, receiverName+" ")
-			msg = getPrefixedMessage(u, msg, true)
+			msg = GetPrefixedMessage(u, msg, true)
 			user.GetMessage(msg)
 			u.GetMessage(msg)
 			return true
@@ -122,7 +122,7 @@ func (u *User) rename(msg string, server *Server) bool {
 		return false
 	}
 	// 查询是否已经存在
-	server.mapLock.Lock()
+	server.MapLock.Lock()
 	newName := after
 	_, ok := server.OnlineMap[newName]
 	if ok {
@@ -132,7 +132,7 @@ func (u *User) rename(msg string, server *Server) bool {
 	delete(server.OnlineMap, u.Name)
 	u.Name = newName
 	server.OnlineMap[newName] = u
-	server.mapLock.Unlock()
+	server.MapLock.Unlock()
 	u.GetMessage("成功: 用户名已更改为[" + newName + "]")
 	return true
 }
