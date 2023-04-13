@@ -15,7 +15,7 @@ type Server struct {
 	mapLock   sync.RWMutex
 
 	// 消息广播的channel
-	Message chan string
+	BroadcastChan chan string
 }
 
 func NewServer(ip string, port int) *Server {
@@ -24,7 +24,8 @@ func NewServer(ip string, port int) *Server {
 		Ip:        ip,
 		Port:      port,
 		OnlineMap: make(map[string]*User),
-		Message:   make(chan string),
+		//mapLock:       sync.RWMutex{},
+		BroadcastChan: make(chan string),
 	}
 	return &server
 }
@@ -40,9 +41,9 @@ func (s *Server) Start() {
 	defer listen.Close()
 
 	// 启动监听Message
-	go s.ListenMessage()
+	go s.ListenBroadcastMessage()
 
-	// loop accept
+	// loop accept 处理新的连接请求
 	for {
 		// accept
 		accept, err := listen.Accept()
@@ -52,21 +53,22 @@ func (s *Server) Start() {
 		}
 
 		// do handler 业务回调
-		go s.Handle(accept)
+		go s.HandleNewConnection(accept)
 	}
 
 }
 
-func (s *Server) Handle(conn net.Conn) {
-	// 处理当前连接请求
+// HandleNewConnection 处理当前连接请求
+func (s *Server) HandleNewConnection(conn net.Conn) {
 	//fmt.Println("连接建立成功")
 	user := NewUser(conn, s)
-
+	conn.Write([]byte("欢迎来到聊天室!\n[who]命令查看在线用户，[rename 你的用户名]来改名\n\n"))
 	user.Online()
 
 	// 接收客户端发送的消息
 	buf := make([]byte, 4096)
 	for {
+		// 阻塞等待用户发送消息
 		read, err := conn.Read(buf)
 		if err != nil && err != io.EOF {
 			fmt.Println("Conn read err:", err)
@@ -80,18 +82,18 @@ func (s *Server) Handle(conn net.Conn) {
 		// 提取用户的消息 去除\n
 		msg := string(buf[:read-1])
 		// 将得到的消息进行广播
-		user.DoMessage(msg)
+		user.SendToServerMessage(msg)
 	}
 }
 
-func (s *Server) BroadCast(user *User, msg string) {
-	sendMsg := "[" + user.Addr + "]" + user.Name + ": " + msg
-	s.Message <- sendMsg
+func (s *Server) BroadCast(sender *User, msg string) {
+	sendMsg := "[" + sender.Addr + "]" + sender.Name + ": " + msg
+	s.BroadcastChan <- sendMsg
 }
 
-func (s *Server) ListenMessage() {
+func (s *Server) ListenBroadcastMessage() {
 	for {
-		msg := <-s.Message
+		msg := <-s.BroadcastChan
 
 		// 将msg发送给全部在线的user
 		s.mapLock.RLock()
