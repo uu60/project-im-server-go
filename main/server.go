@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 )
 
 type Server struct {
@@ -65,8 +66,33 @@ func (s *Server) HandleNewConnection(conn net.Conn) {
 	conn.Write([]byte("欢迎来到聊天室!\n[who]命令查看在线用户，[rename 你的用户名]来改名\n\n"))
 	user.Online()
 
+	aliveChan := make(chan bool)
 	// 接收客户端发送的消息
 	buf := make([]byte, 4096)
+	go s.loopWaitForMessage(conn, buf, user, aliveChan)
+
+	// 实现超时踢出
+	go s.loopHandleTimeout(conn, aliveChan, user)
+}
+
+func (s *Server) loopHandleTimeout(conn net.Conn, aliveChan chan bool, user *User) {
+	for {
+		// 监听多个管道
+		select {
+		case <-aliveChan:
+			// 自动执行下面的来重置定时
+		case <-time.After(time.Second * 15):
+			// 已经超时,踢出当前user
+			user.ToReceiveMessage("超时踢出")
+			close(user.C)
+			// 关闭连接
+			conn.Close()
+			return
+		}
+	}
+}
+
+func (s *Server) loopWaitForMessage(conn net.Conn, buf []byte, user *User, aliveChan chan bool) {
 	for {
 		// 阻塞等待用户发送消息
 		read, err := conn.Read(buf)
@@ -83,6 +109,7 @@ func (s *Server) HandleNewConnection(conn net.Conn) {
 		msg := string(buf[:read-1])
 		// 将得到的消息进行广播
 		user.SendToServerMessage(msg)
+		aliveChan <- true
 	}
 }
 

@@ -34,7 +34,7 @@ func (u *User) ListenMessage() {
 	// loop listen
 	for {
 		msg := <-u.C
-		u.ReceiveMessage(msg)
+		u.ToReceiveMessage(msg)
 	}
 }
 
@@ -69,7 +69,7 @@ func (u *User) SendToServerMessage(msg string) {
 		// 查询当前在线用户
 		server.mapLock.RLock()
 		for _, user := range server.OnlineMap {
-			u.ReceiveMessage("在线: [" + user.Addr + "]" + user.Name)
+			u.ToReceiveMessage("在线: [" + user.Addr + "]" + user.Name)
 		}
 		server.mapLock.RUnlock()
 	} else if strings.HasPrefix(msg, "rename ") {
@@ -86,10 +86,10 @@ func (u *User) SendToServerMessage(msg string) {
 func (u *User) rename(msg string, server *Server) bool {
 	after, _ := strings.CutPrefix(msg, "rename ")
 	if strings.Contains(after, " ") {
-		u.ReceiveMessage("失败: 用户名不能包含空格")
+		u.ToReceiveMessage("失败: 用户名不能包含空格")
 		return false
 	} else if len(after) > 10 {
-		u.ReceiveMessage("失败: 用户名不能超过10个字符")
+		u.ToReceiveMessage("失败: 用户名不能超过10个字符")
 		return false
 	}
 	// 查询是否已经存在
@@ -97,19 +97,19 @@ func (u *User) rename(msg string, server *Server) bool {
 	newName := after
 	_, ok := server.OnlineMap[newName]
 	if ok {
-		u.ReceiveMessage("失败: 用户名已存在")
+		u.ToReceiveMessage("失败: 用户名已存在")
 		return false
 	}
 	delete(server.OnlineMap, u.Name)
 	u.Name = newName
 	server.OnlineMap[newName] = u
 	server.mapLock.Unlock()
-	u.ReceiveMessage("成功: 用户名已更改为[" + newName + "]")
+	u.ToReceiveMessage("成功: 用户名已更改为[" + newName + "]")
 	return true
 }
 
-// ReceiveMessage 给指定客户发消息
-func (u *User) ReceiveMessage(msg string) {
+// ToReceiveMessage 给指定客户发消息
+func (u *User) ToReceiveMessage(msg string) {
 	u.conn.Write([]byte("\r" + msg + "\n"))
 	u.conn.Write([]byte("发送: "))
 }
