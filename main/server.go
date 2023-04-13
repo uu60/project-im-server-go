@@ -24,7 +24,6 @@ func NewServer(ip string, port int) *Server {
 		Ip:        ip,
 		Port:      port,
 		OnlineMap: make(map[string]*User),
-		mapLock:   sync.RWMutex{},
 		Message:   make(chan string),
 	}
 	return &server
@@ -61,15 +60,9 @@ func (s *Server) Start() {
 func (s *Server) Handle(conn net.Conn) {
 	// 处理当前连接请求
 	//fmt.Println("连接建立成功")
-	user := NewUser(conn)
+	user := NewUser(conn, s)
 
-	// 用户上线，将用户加入到onlineMap中
-	s.mapLock.Lock()
-	s.OnlineMap[user.Name] = user
-	s.mapLock.Unlock()
-
-	// 广播当前用户上线信息
-	s.BroadCast(user, "已上线")
+	user.Online()
 
 	// 接收客户端发送的消息
 	buf := make([]byte, 4096)
@@ -80,14 +73,14 @@ func (s *Server) Handle(conn net.Conn) {
 		}
 
 		if read == 0 {
-			s.BroadCast(user, "下线")
+			user.Offline()
 			return
 		}
 
 		// 提取用户的消息 去除\n
 		msg := string(buf[:read-1])
 		// 将得到的消息进行广播
-		s.BroadCast(user, msg)
+		user.DoMessage(msg)
 	}
 }
 
