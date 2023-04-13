@@ -63,13 +63,12 @@ func (s *Server) Start() {
 func (s *Server) HandleNewConnection(conn net.Conn) {
 	//fmt.Println("连接建立成功")
 	user := NewUser(conn, s)
-	conn.Write([]byte("欢迎来到聊天室!\n[who]命令查看在线用户，[rename 你的用户名]来改名\n\n"))
+	conn.Write([]byte("欢迎来到聊天室!\n[who]命令查看在线用户\n[rename 你的用户名]来改名\n[send->接收人名字]来进行私聊\n\n"))
 	user.Online()
 
 	aliveChan := make(chan bool)
 	// 接收客户端发送的消息
-	buf := make([]byte, 4096)
-	go s.loopWaitForMessage(conn, buf, user, aliveChan)
+	go s.loopWaitForMessage(conn, user, aliveChan)
 
 	// 实现超时踢出
 	go s.loopHandleTimeout(conn, aliveChan, user)
@@ -81,9 +80,9 @@ func (s *Server) loopHandleTimeout(conn net.Conn, aliveChan chan bool, user *Use
 		select {
 		case <-aliveChan:
 			// 自动执行下面的来重置定时
-		case <-time.After(time.Second * 15):
+		case <-time.After(time.Second * 60):
 			// 已经超时,踢出当前user
-			user.ToReceiveMessage("超时踢出")
+			user.GetMessage("系统: 超时踢出")
 			close(user.C)
 			// 关闭连接
 			conn.Close()
@@ -92,7 +91,8 @@ func (s *Server) loopHandleTimeout(conn net.Conn, aliveChan chan bool, user *Use
 	}
 }
 
-func (s *Server) loopWaitForMessage(conn net.Conn, buf []byte, user *User, aliveChan chan bool) {
+func (s *Server) loopWaitForMessage(conn net.Conn, user *User, aliveChan chan bool) {
+	buf := make([]byte, 4096)
 	for {
 		// 阻塞等待用户发送消息
 		read, err := conn.Read(buf)
@@ -100,6 +100,7 @@ func (s *Server) loopWaitForMessage(conn net.Conn, buf []byte, user *User, alive
 			fmt.Println("Conn read err:", err)
 		}
 
+		// 发送空白字符长度为1
 		if read == 0 {
 			user.Offline()
 			return
@@ -108,13 +109,13 @@ func (s *Server) loopWaitForMessage(conn net.Conn, buf []byte, user *User, alive
 		// 提取用户的消息 去除\n
 		msg := string(buf[:read-1])
 		// 将得到的消息进行广播
-		user.SendToServerMessage(msg)
+		user.SendMessage(msg)
 		aliveChan <- true
 	}
 }
 
 func (s *Server) BroadCast(sender *User, msg string) {
-	sendMsg := "[" + sender.Addr + "]" + sender.Name + ": " + msg
+	sendMsg := getPrefixedMessage(sender, msg, false)
 	s.BroadcastChan <- sendMsg
 }
 
