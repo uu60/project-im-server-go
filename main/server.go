@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"sync"
 )
@@ -30,9 +31,9 @@ func NewServer(ip string, port int) *Server {
 }
 
 // 启动服务器的接口
-func (this *Server) Start() {
+func (s *Server) Start() {
 	// socket listen
-	listen, err := net.Listen("tcp", fmt.Sprintf("%s:%d", this.Ip, this.Port))
+	listen, err := net.Listen("tcp", fmt.Sprintf("%s:%d", s.Ip, s.Port))
 	if err != nil {
 		fmt.Println("net.Listen err:", err)
 	}
@@ -40,7 +41,7 @@ func (this *Server) Start() {
 	defer listen.Close()
 
 	// 启动监听Message
-	go this.ListenMessage()
+	go s.ListenMessage()
 
 	// loop accept
 	for {
@@ -52,38 +53,58 @@ func (this *Server) Start() {
 		}
 
 		// do handler 业务回调
-		go this.Handle(accept)
+		go s.Handle(accept)
 	}
 
 }
 
-func (this *Server) Handle(conn net.Conn) {
+func (s *Server) Handle(conn net.Conn) {
 	// 处理当前连接请求
 	//fmt.Println("连接建立成功")
 	user := NewUser(conn)
 
 	// 用户上线，将用户加入到onlineMap中
-	this.mapLock.Lock()
-	this.OnlineMap[user.Name] = user
-	this.mapLock.Unlock()
+	s.mapLock.Lock()
+	s.OnlineMap[user.Name] = user
+	s.mapLock.Unlock()
 
-	this.BroadCast(user, "已上线")
-}
+	// 广播当前用户上线信息
+	s.BroadCast(user, "已上线")
 
-func (this *Server) BroadCast(user *User, msg string) {
-	sendMsg := "[" + user.Addr + "]" + user.Name + ": " + msg
-	this.Message <- sendMsg
-}
-
-func (this *Server) ListenMessage() {
+	// 接收客户端发送的消息
+	buf := make([]byte, 4096)
 	for {
-		msg := <-this.Message
+		read, err := conn.Read(buf)
+		if err != nil && err != io.EOF {
+			fmt.Println("Conn read err:", err)
+		}
+
+		if read == 0 {
+			s.BroadCast(user, "下线")
+			return
+		}
+
+		// 提取用户的消息 去除\n
+		msg := string(buf[:read-1])
+		// 将得到的消息进行广播
+		s.BroadCast(user, msg)
+	}
+}
+
+func (s *Server) BroadCast(user *User, msg string) {
+	sendMsg := "[" + user.Addr + "]" + user.Name + ": " + msg
+	s.Message <- sendMsg
+}
+
+func (s *Server) ListenMessage() {
+	for {
+		msg := <-s.Message
 
 		// 将msg发送给全部在线的user
-		this.mapLock.RLock()
-		for _, cli := range this.OnlineMap {
+		s.mapLock.RLock()
+		for _, cli := range s.OnlineMap {
 			cli.C <- msg
 		}
-		this.mapLock.RUnlock()
+		s.mapLock.RUnlock()
 	}
 }
